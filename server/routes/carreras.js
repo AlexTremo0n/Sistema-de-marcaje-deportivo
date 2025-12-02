@@ -129,25 +129,23 @@ router.get('/historial/resultados', async (req, res) => {
       ORDER BY c.finalizado_en DESC
     `);
 
-    // Para cada carrera, obtener sus resultados
+    // Para cada carrera, obtener sus resultados desde participaciones
     const historial = [];
     for (const carrera of carreras.rows) {
       const resultados = await query(`
         SELECT 
-          ro.posicion,
-          ro.tiempo_oficial_ms as tiempo,
-          ro.tiempo_formato,
+          pa.posicion,
+          pa.tiempo_final_ms as tiempo,
+          pa.carril,
           d.nombre as deportista_nombre,
           d.apellido as deportista_apellido,
           d.rfid_code,
-          cl.nombre as club_nombre,
-          pa.carril
-        FROM resultados_oficiales ro
-        JOIN deportistas d ON ro.id_deportista = d.id
-        LEFT JOIN clubes cl ON ro.id_club = cl.id
-        LEFT JOIN participaciones pa ON pa.id_carrera = ro.id_carrera AND pa.id_deportista = ro.id_deportista
-        WHERE ro.id_carrera = $1
-        ORDER BY ro.posicion
+          cl.nombre as club_nombre
+        FROM participaciones pa
+        JOIN deportistas d ON pa.id_deportista = d.id
+        LEFT JOIN clubes cl ON d.id_club = cl.id
+        WHERE pa.id_carrera = $1 AND pa.tiempo_final_ms IS NOT NULL
+        ORDER BY pa.posicion NULLS LAST, pa.tiempo_final_ms
       `, [carrera.id]);
 
       if (resultados.rows.length > 0) {
