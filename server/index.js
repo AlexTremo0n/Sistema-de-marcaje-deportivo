@@ -3,6 +3,7 @@
 
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const { pool, wakeUp } = require('./config/database');
@@ -54,6 +55,21 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Servir frontend en producción
+if (process.env.NODE_ENV === 'production') {
+  // Servir archivos estáticos del build de React
+  app.use(express.static(path.join(__dirname, '../build')));
+  
+  // Cualquier ruta que NO sea API, devolver el index.html
+  app.get('*', (req, res, next) => {
+    // Si es una ruta de API, pasar al siguiente handler (404)
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(__dirname, '../build', 'index.html'));
+  });
+}
+
 // Manejo de errores global
 app.use((err, req, res, next) => {
   console.error('❌ Error:', err);
@@ -68,8 +84,9 @@ const startServer = async () => {
   await wakeUp();
   
   app.listen(PORT, () => {
-    console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
-    console.log(`📡 API disponible en http://localhost:${PORT}/api`);
+    console.log(`🚀 Servidor corriendo en puerto ${PORT}`);
+    console.log(`📡 API disponible en /api`);
+    console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
   });
 };
 
