@@ -110,6 +110,76 @@ router.get('/activa', async (req, res) => {
   }
 });
 
+// GET /api/carreras/historial/resultados - Obtener historial de resultados
+router.get('/historial/resultados', async (req, res) => {
+  try {
+    // Obtener carreras finalizadas con sus datos
+    const carreras = await query(`
+      SELECT 
+        c.id,
+        c.finalizado_en as fecha,
+        p.nombre as prueba_nombre,
+        cat.nombre as categoria_nombre,
+        comp.nombre as competencia_nombre
+      FROM carreras c
+      JOIN pruebas p ON c.id_prueba = p.id
+      JOIN categorias cat ON c.id_categoria = cat.id
+      JOIN competencias comp ON c.id_competencia = comp.id
+      WHERE c.estado = 'finalizada'
+      ORDER BY c.finalizado_en DESC
+    `);
+
+    // Para cada carrera, obtener sus resultados
+    const historial = [];
+    for (const carrera of carreras.rows) {
+      const resultados = await query(`
+        SELECT 
+          ro.posicion,
+          ro.tiempo_oficial_ms as tiempo,
+          ro.tiempo_formato,
+          d.nombre as deportista_nombre,
+          d.apellido as deportista_apellido,
+          d.rfid_code,
+          cl.nombre as club_nombre,
+          pa.carril
+        FROM resultados_oficiales ro
+        JOIN deportistas d ON ro.id_deportista = d.id
+        LEFT JOIN clubes cl ON ro.id_club = cl.id
+        LEFT JOIN participaciones pa ON pa.id_carrera = ro.id_carrera AND pa.id_deportista = ro.id_deportista
+        WHERE ro.id_carrera = $1
+        ORDER BY ro.posicion
+      `, [carrera.id]);
+
+      if (resultados.rows.length > 0) {
+        historial.push({
+          id: carrera.id,
+          prueba: carrera.prueba_nombre,
+          categoria: carrera.categoria_nombre,
+          competencia: carrera.competencia_nombre,
+          fecha: carrera.fecha ? new Date(carrera.fecha).toLocaleDateString() : 'N/A',
+          resultados: resultados.rows.map(r => ({
+            posicion: r.posicion,
+            deportista: {
+              nombre: r.deportista_nombre,
+              apellido: r.deportista_apellido,
+              club: r.club_nombre,
+              rfid: r.rfid_code
+            },
+            carril: r.carril,
+            tiempo: r.tiempo
+          }))
+        });
+      }
+    }
+
+    res.json(historial);
+
+  } catch (error) {
+    console.error('Error al obtener historial:', error);
+    res.status(500).json({ error: 'Error al obtener historial' });
+  }
+});
+
 // GET /api/carreras/:id - Obtener una carrera por ID con sus participaciones
 router.get('/:id', async (req, res) => {
   try {
@@ -484,6 +554,22 @@ router.put('/:id/finalizar', async (req, res) => {
       WHERE pa.id_carrera = $1
       ORDER BY pa.posicion NULLS LAST
     `, [id]);
+
+    // Guardar en resultados_oficiales
+    for (const r of resultados.rows) {
+      if (r.tiempo_final_ms) {
+        const minutos = Math.floor(r.tiempo_final_ms / 60000);
+        const segundos = Math.floor((r.tiempo_final_ms % 60000) / 1000);
+        const centesimas = Math.floor((r.tiempo_final_ms % 1000) / 10);
+        const tiempoFormato = `${String(minutos).padStart(2, '0')}:${String(segundos).padStart(2, '0')}.${String(centesimas).padStart(2, '0')}`;
+        
+        await query(`
+          INSERT INTO resultados_oficiales (id_carrera, id_deportista, id_club, posicion, tiempo_oficial_ms, tiempo_formato)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT DO NOTHING
+        `, [id, r.deportista_id, r.id_club, r.posicion, r.tiempo_final_ms, tiempoFormato]);
+      }
+    }
 
     res.json({
       success: true,

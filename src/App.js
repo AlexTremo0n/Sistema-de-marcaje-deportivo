@@ -727,8 +727,26 @@ const DashboardPage = ({ carreraActual, setCarreraActual, setHistorialResultados
 };
 
 // ==================== RESULTADOS ====================
-const ResultadosPage = ({ historialResultados }) => {
+const ResultadosPage = ({ historialResultados, setHistorialResultados }) => {
   const [sel, setSel] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    cargarHistorial();
+  }, []);
+
+  const cargarHistorial = async () => {
+    try {
+      const resp = await fetch('/api/carreras/historial/resultados');
+      const data = await resp.json();
+      setHistorialResultados(data);
+    } catch (e) {
+      console.error('Error cargando historial:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatTime = (ms) => {
     if (!ms) return '--:--.--';
     const m = Math.floor(ms / 60000);
@@ -736,6 +754,15 @@ const ResultadosPage = ({ historialResultados }) => {
     const cs = Math.floor((ms % 1000) / 10);
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
   };
+
+  if (loading) {
+    return (
+      <div style={{ padding: '32px', textAlign: 'center' }}>
+        <span style={{ fontSize: '48px' }}>⏳</span>
+        <p>Cargando resultados...</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -850,7 +877,7 @@ export default function App() {
       case 'registro': return <RegistroPage deportistas={deportistas} setDeportistas={setDeportistas} />;
       case 'competencia': return <CompetenciaPage deportistas={deportistas} setDeportistas={setDeportistas} setCurrentPage={setCurrentPage} setCarreraActual={setCarreraActual} />;
       case 'dashboard': return <DashboardPage carreraActual={carreraActual} setCarreraActual={setCarreraActual} setHistorialResultados={setHistorialResultados} />;
-      case 'resultados': return <ResultadosPage historialResultados={historialResultados} />;
+      case 'resultados': return <ResultadosPage historialResultados={historialResultados} setHistorialResultados={setHistorialResultados} />;
       default: return <LoginPage setCurrentPage={setCurrentPage} setUser={setUser} />;
     }
   };
