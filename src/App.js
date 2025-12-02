@@ -329,7 +329,7 @@ const RegistroPage = ({ deportistas, setDeportistas }) => {
                 </div>
                 <div>
                   <div style={{ fontWeight: '600' }}>{d.nombre} {d.apellido}</div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>{d.categoria?.nombre || d.categoria} • RFID: {d.rfid_code || 'N/A'}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>{d.categoria?.nombre || d.categoria} • RFID: {d.rfidCode || d.rfid_code || 'N/A'}</div>
                 </div>
               </div>
             ))}
@@ -490,7 +490,7 @@ const DashboardPage = ({ carreraActual, setCarreraActual, setHistorialResultados
       const resp = await fetch(`/api/carreras/${carreraActual.id}/asignar-carril`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rfidCode: dep.rfid_code, carril })
+        body: JSON.stringify({ rfidCode: dep.rfidCode || dep.rfid_code, carril })
       });
       if (!resp.ok) throw new Error((await resp.json()).error);
 
@@ -529,7 +529,7 @@ const DashboardPage = ({ carreraActual, setCarreraActual, setHistorialResultados
       const resp = await fetch(`/api/carreras/${carreraActual.id}/registrar-llegada`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ carril, tiempoLlegada: t, rfidCode: p.deportista.rfid_code })
+        body: JSON.stringify({ carril, tiempoLlegada: t, rfidCode: p.deportista.rfidCode || p.deportista.rfid_code })
       });
       const data = await resp.json();
 
