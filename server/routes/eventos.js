@@ -292,4 +292,153 @@ router.post('/simular', async (req, res) => {
   }
 });
 
+// POST /api/eventos/iot - Recibir eventos desde n8n/sensores IoT
+router.post('/iot', async (req, res) => {
+  try {
+    const { evento, timestamp_inicio, carril, rfid, ts_evento } = req.body;
+
+    console.log('📡 Evento IoT recibido:', req.body);
+
+    // Guardar el evento en la base de datos
+    const timestamp = ts_evento || timestamp_inicio || Date.now();
+    await query(`
+      INSERT INTO evento_iot (carril, rfid, evento, ts_evento, payload)
+      VALUES ($1, $2, $3, $4, $5)
+    `, [carril || 0, rfid || null, evento?.toUpperCase() || 'DESCONOCIDO', timestamp, JSON.stringify(req.body)]);
+
+    // Si es evento de INICIO, iniciar la carrera activa
+    if (evento?.toLowerCase() === 'inicio') {
+      // Buscar carrera en estado 'lista' o 'asignando'
+      const carreraResult = await query(`
+        SELECT id, estado 
+        FROM carreras 
+        WHERE estado IN ('lista', 'asignando')
+        ORDER BY creado_en DESC 
+        LIMIT 1
+      `);
+
+      if (carreraResult.rows.length > 0) {
+        const carrera = carreraResult.rows[0];
+        const tiempoInicio = timestamp_inicio || Date.now();
+
+        // Iniciar la carrera
+        await query(`
+          UPDATE carreras 
+          SET estado = 'en_curso',
+              tiempo_inicio = $1,
+              tiempo_inicio_real = NOW(),
+              iniciado_en = NOW()
+          WHERE id = $2
+        `, [tiempoInicio, carrera.id]);
+
+        // Actualizar estado de participaciones
+        await query(`
+          UPDATE participaciones 
+          SET estado = 'en_carrera'
+          WHERE id_carrera = $1 AND estado = 'asignado'
+        `, [carrera.id]);
+
+        console.log(`🟢 Carrera ${carrera.id} iniciada con timestamp ${tiempoInicio}`);
+
+        return res.json({
+          success: true,
+          message: 'Carrera iniciada',
+          carreraId: carrera.id,
+          tiempoInicio: tiempoInicio
+        });
+      } else {
+        return res.json({
+          success: false,
+          message: 'No hay carrera lista para iniciar'
+        });
+      }
+    }
+
+    // Si es evento de TOQUE (llegada de nadador)
+    if (evento?.toLowerCase() === 'toque') {
+      // Buscar carrera en curso
+      const carreraResult = await query(`
+        SELECT id, tiempo_inicio 
+        FROM carreras 
+        WHERE estado = 'en_curso'
+        ORDER BY tiempo_inicio_real DESC 
+        LIMIT 1
+      `);
+
+      if (carreraResult.rows.length > 0) {
+        const carrera = carreraResult.rows[0];
+        const tiempoLlegada = ts_evento || Date.now();
+        const tiempoFinalMs = tiempoLlegada - carrera.tiempo_inicio;
+
+        // Buscar participación por RFID o carril
+        let participacion = null;
+        
+        if (rfid) {
+          const partResult = await query(`
+            SELECT pa.id, pa.carril, d.nombre, d.apellido
+            FROM participaciones pa
+            JOIN deportistas d ON pa.id_deportista = d.id
+            WHERE pa.id_carrera = $1 AND d.rfid_code = $2 AND pa.estado = 'en_carrera'
+          `, [carrera.id, rfid]);
+          if (partResult.rows.length > 0) participacion = partResult.rows[0];
+        }
+        
+        if (!participacion && carril) {
+          const partResult = await query(`
+            SELECT pa.id, pa.carril, d.nombre, d.apellido
+            FROM participaciones pa
+            JOIN deportistas d ON pa.id_deportista = d.id
+            WHERE pa.id_carrera = $1 AND pa.carril = $2 AND pa.estado = 'en_carrera'
+          `, [carrera.id, carril]);
+          if (partResult.rows.length > 0) participacion = partResult.rows[0];
+        }
+
+        if (participacion) {
+          // Registrar llegada
+          await query(`
+            UPDATE participaciones 
+            SET tiempo_llegada = $1,
+                tiempo_final_ms = $2,
+                rfid_detectado = $3,
+                estado = 'finalizado',
+                llegada_en = NOW()
+            WHERE id = $4
+          `, [tiempoLlegada, tiempoFinalMs, rfid, participacion.id]);
+
+          console.log(`🏁 Llegada: ${participacion.nombre} ${participacion.apellido} - Carril ${participacion.carril} - ${tiempoFinalMs}ms`);
+
+          return res.json({
+            success: true,
+            message: 'Llegada registrada',
+            deportista: `${participacion.nombre} ${participacion.apellido}`,
+            carril: participacion.carril,
+            tiempoFinalMs: tiempoFinalMs
+          });
+        } else {
+          return res.json({
+            success: false,
+            message: 'No se encontró participante con ese RFID/carril'
+          });
+        }
+      } else {
+        return res.json({
+          success: false,
+          message: 'No hay carrera en curso'
+        });
+      }
+    }
+
+    // Evento desconocido
+    res.json({
+      success: true,
+      message: 'Evento registrado',
+      evento: evento
+    });
+
+  } catch (error) {
+    console.error('Error al procesar evento IoT:', error);
+    res.status(500).json({ error: 'Error al procesar evento IoT' });
+  }
+});
+
 module.exports = router;
