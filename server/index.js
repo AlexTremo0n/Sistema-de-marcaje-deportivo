@@ -15,6 +15,7 @@ const competenciasRoutes = require('./routes/competencias');
 const carrerasRoutes = require('./routes/carreras');
 const eventosRoutes = require('./routes/eventos');
 const catalogosRoutes = require('./routes/catalogos');
+const rankingsRoutes = require('./routes/rankings');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -36,6 +37,7 @@ app.use('/api/competencias', competenciasRoutes);
 app.use('/api/carreras', carrerasRoutes);
 app.use('/api/eventos', eventosRoutes);
 app.use('/api/catalogos', catalogosRoutes);
+app.use('/api/rankings', rankingsRoutes);
 
 // Ruta de prueba de conexión
 app.get('/api/health', async (req, res) => {

@@ -7,6 +7,7 @@ const Navbar = ({ currentPage, setCurrentPage, user }) => {
     { id: 'competencia', label: 'Competencia', icon: '🏊' },
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'resultados', label: 'Resultados', icon: '🏆' },
+    { id: 'rankings', label: 'Rankings', icon: '📈' },
   ];
 
   return (
@@ -863,6 +864,316 @@ const ResultadosPage = ({ historialResultados, setHistorialResultados }) => {
   );
 };
 
+// ==================== RANKINGS ====================
+const RankingsPage = () => {
+  const [tab, setTab] = useState('general'); // 'general', 'categoria', 'prueba', 'clubes'
+  const [categorias, setCategorias] = useState([]);
+  const [pruebas, setPruebas] = useState([]);
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('');
+  const [pruebaSeleccionada, setPruebaSeleccionada] = useState('');
+  const [ranking, setRanking] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [infoExtra, setInfoExtra] = useState(null);
+
+  useEffect(() => {
+    cargarCatalogos();
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'general') cargarRankingGeneral();
+    if (tab === 'clubes') cargarRankingClubes();
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab === 'categoria' && categoriaSeleccionada) {
+      cargarRankingCategoria(categoriaSeleccionada);
+    }
+  }, [categoriaSeleccionada, tab]);
+
+  useEffect(() => {
+    if (tab === 'prueba' && pruebaSeleccionada) {
+      cargarRankingPrueba(pruebaSeleccionada);
+    }
+  }, [pruebaSeleccionada, tab]);
+
+  const cargarCatalogos = async () => {
+    try {
+      const [cat, pru] = await Promise.all([
+        fetch('/api/catalogos/categorias').then(r => r.json()),
+        fetch('/api/catalogos/pruebas').then(r => r.json())
+      ]);
+      setCategorias(cat);
+      setPruebas(pru);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const cargarRankingGeneral = async () => {
+    setLoading(true);
+    try {
+      const data = await fetch('/api/rankings/general').then(r => r.json());
+      setRanking(data);
+      setInfoExtra(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cargarRankingCategoria = async (idCategoria) => {
+    setLoading(true);
+    try {
+      const data = await fetch(`/api/rankings/categoria/${idCategoria}`).then(r => r.json());
+      setRanking(data.ranking || []);
+      setInfoExtra({ tipo: 'categoria', data: data.categoria });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cargarRankingPrueba = async (idPrueba) => {
+    setLoading(true);
+    try {
+      const url = categoriaSeleccionada 
+        ? `/api/rankings/prueba/${idPrueba}?idCategoria=${categoriaSeleccionada}`
+        : `/api/rankings/prueba/${idPrueba}`;
+      const data = await fetch(url).then(r => r.json());
+      setRanking(data.ranking || []);
+      setInfoExtra({ tipo: 'prueba', data: data.prueba });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cargarRankingClubes = async () => {
+    setLoading(true);
+    try {
+      const data = await fetch('/api/rankings/clubes').then(r => r.json());
+      setRanking(data);
+      setInfoExtra(null);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTime = (ms) => {
+    if (!ms) return '--:--.--';
+    const m = Math.floor(ms / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    const cs = Math.floor((ms % 1000) / 10);
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+  };
+
+  const getMedalla = (pos) => {
+    if (pos === 1) return '🥇';
+    if (pos === 2) return '🥈';
+    if (pos === 3) return '🥉';
+    return pos;
+  };
+
+  return (
+    <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
+      <h2 style={{ color: '#1e3a5f', marginBottom: '24px' }}>📈 Rankings</h2>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
+        {[
+          { id: 'general', label: '🏅 General', desc: 'Todos los deportistas' },
+          { id: 'categoria', label: '👥 Por Categoría', desc: 'Senior, Juvenil, etc.' },
+          { id: 'prueba', label: '🏊 Por Prueba', desc: 'Mejores tiempos' },
+          { id: 'clubes', label: '🏢 Clubes', desc: 'Ranking de clubes' },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => { setTab(t.id); setRanking([]); }}
+            style={{
+              padding: '12px 20px',
+              border: tab === t.id ? '2px solid #1976d2' : '2px solid #e0e0e0',
+              background: tab === t.id ? '#e3f2fd' : 'white',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              textAlign: 'left'
+            }}
+          >
+            <div style={{ fontWeight: '600' }}>{t.label}</div>
+            <div style={{ fontSize: '12px', color: '#666' }}>{t.desc}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Filtros */}
+      {tab === 'categoria' && (
+        <div style={{ background: 'white', padding: '16px', borderRadius: '12px', marginBottom: '24px' }}>
+          <label style={{ fontWeight: '600', marginRight: '12px' }}>Seleccionar categoría:</label>
+          <select
+            value={categoriaSeleccionada}
+            onChange={(e) => setCategoriaSeleccionada(e.target.value)}
+            style={{ padding: '10px', borderRadius: '8px', border: '2px solid #e0e0e0', minWidth: '200px' }}
+          >
+            <option value="">-- Seleccione --</option>
+            {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </select>
+        </div>
+      )}
+
+      {tab === 'prueba' && (
+        <div style={{ background: 'white', padding: '16px', borderRadius: '12px', marginBottom: '24px', display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontWeight: '600', marginRight: '12px' }}>Seleccionar prueba:</label>
+            <select
+              value={pruebaSeleccionada}
+              onChange={(e) => setPruebaSeleccionada(e.target.value)}
+              style={{ padding: '10px', borderRadius: '8px', border: '2px solid #e0e0e0', minWidth: '200px' }}
+            >
+              <option value="">-- Seleccione --</option>
+              {pruebas.map(p => <option key={p.id} value={p.id}>{p.nombre} ({p.distancia_metros}m)</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontWeight: '600', marginRight: '12px' }}>Filtrar por categoría (opcional):</label>
+            <select
+              value={categoriaSeleccionada}
+              onChange={(e) => setCategoriaSeleccionada(e.target.value)}
+              style={{ padding: '10px', borderRadius: '8px', border: '2px solid #e0e0e0', minWidth: '200px' }}
+            >
+              <option value="">Todas las categorías</option>
+              {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Info Extra */}
+      {infoExtra && (
+        <div style={{ background: '#e3f2fd', padding: '16px', borderRadius: '12px', marginBottom: '24px' }}>
+          {infoExtra.tipo === 'categoria' && (
+            <span style={{ fontWeight: '600' }}>📊 Ranking de categoría: {infoExtra.data?.nombre}</span>
+          )}
+          {infoExtra.tipo === 'prueba' && (
+            <span style={{ fontWeight: '600' }}>🏊 Mejores tiempos en: {infoExtra.data?.nombre} ({infoExtra.data?.distancia_metros}m)</span>
+          )}
+        </div>
+      )}
+
+      {/* Tabla de Ranking */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.08)' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}>⏳ Cargando...</div>
+        ) : ranking.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+            <span style={{ fontSize: '48px', display: 'block', marginBottom: '16px' }}>📋</span>
+            {tab === 'general' || tab === 'clubes' ? 'No hay datos de ranking aún' : 'Seleccione una opción para ver el ranking'}
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e0e0e0' }}>
+                <th style={{ padding: '12px', textAlign: 'center', color: '#666', width: '60px' }}>Pos</th>
+                <th style={{ padding: '12px', textAlign: 'left', color: '#666' }}>
+                  {tab === 'clubes' ? 'Club' : 'Deportista'}
+                </th>
+                {tab !== 'clubes' && <th style={{ padding: '12px', textAlign: 'left', color: '#666' }}>Club</th>}
+                {(tab === 'general' || tab === 'categoria') && (
+                  <th style={{ padding: '12px', textAlign: 'center', color: '#666' }}>Categoría</th>
+                )}
+                {tab === 'prueba' && (
+                  <>
+                    <th style={{ padding: '12px', textAlign: 'center', color: '#666' }}>Mejor Tiempo</th>
+                    <th style={{ padding: '12px', textAlign: 'center', color: '#666' }}>Promedio</th>
+                  </>
+                )}
+                <th style={{ padding: '12px', textAlign: 'center', color: '#666' }}>🥇</th>
+                <th style={{ padding: '12px', textAlign: 'center', color: '#666' }}>🥈</th>
+                <th style={{ padding: '12px', textAlign: 'center', color: '#666' }}>🥉</th>
+                <th style={{ padding: '12px', textAlign: 'center', color: '#666' }}>Puntos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranking.map((r, idx) => (
+                <tr key={r.id || idx} style={{ borderBottom: '1px solid #f0f0f0', background: r.posicion <= 3 ? '#fffde7' : 'transparent' }}>
+                  <td style={{ padding: '16px 12px', textAlign: 'center', fontSize: '18px' }}>
+                    {getMedalla(r.posicion)}
+                  </td>
+                  <td style={{ padding: '16px 12px' }}>
+                    <div style={{ fontWeight: '600' }}>
+                      {tab === 'clubes' ? r.nombre : `${r.nombre} ${r.apellido}`}
+                    </div>
+                    {tab === 'clubes' && (
+                      <div style={{ fontSize: '12px', color: '#666' }}>{r.total_deportistas} deportistas</div>
+                    )}
+                  </td>
+                  {tab !== 'clubes' && (
+                    <td style={{ padding: '16px 12px', color: '#666' }}>{r.club_nombre || '-'}</td>
+                  )}
+                  {(tab === 'general' || tab === 'categoria') && (
+                    <td style={{ padding: '16px 12px', textAlign: 'center' }}>
+                      <span style={{ background: '#e8f5e9', color: '#2e7d32', padding: '4px 12px', borderRadius: '12px', fontSize: '12px' }}>
+                        {r.categoria_nombre || '-'}
+                      </span>
+                    </td>
+                  )}
+                  {tab === 'prueba' && (
+                    <>
+                      <td style={{ padding: '16px 12px', textAlign: 'center', fontFamily: 'monospace', fontWeight: '700', color: '#1976d2' }}>
+                        {formatTime(r.mejor_tiempo_ms)}
+                      </td>
+                      <td style={{ padding: '16px 12px', textAlign: 'center', fontFamily: 'monospace', color: '#666' }}>
+                        {formatTime(r.tiempo_promedio_ms)}
+                      </td>
+                    </>
+                  )}
+                  <td style={{ padding: '16px 12px', textAlign: 'center', fontWeight: '600', color: '#ffd700' }}>
+                    {tab === 'clubes' ? r.medallas_oro : r.primer_lugar}
+                  </td>
+                  <td style={{ padding: '16px 12px', textAlign: 'center', fontWeight: '600', color: '#c0c0c0' }}>
+                    {tab === 'clubes' ? r.medallas_plata : r.segundo_lugar}
+                  </td>
+                  <td style={{ padding: '16px 12px', textAlign: 'center', fontWeight: '600', color: '#cd7f32' }}>
+                    {tab === 'clubes' ? r.medallas_bronce : r.tercer_lugar}
+                  </td>
+                  <td style={{ padding: '16px 12px', textAlign: 'center' }}>
+                    <span style={{ 
+                      background: 'linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%)', 
+                      color: 'white', 
+                      padding: '6px 16px', 
+                      borderRadius: '20px', 
+                      fontWeight: '700',
+                      fontSize: '14px'
+                    }}>
+                      {r.puntos_totales || 0}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Leyenda de puntos */}
+      <div style={{ marginTop: '24px', background: '#f5f5f5', padding: '16px', borderRadius: '12px' }}>
+        <h4 style={{ margin: '0 0 12px', color: '#666' }}>📊 Sistema de puntuación:</h4>
+        <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '14px', color: '#666' }}>
+          <span>🥇 1° lugar = 10 pts</span>
+          <span>🥈 2° lugar = 6 pts</span>
+          <span>🥉 3° lugar = 4 pts</span>
+          <span>4° lugar = 3 pts</span>
+          <span>5° lugar = 2 pts</span>
+          <span>6°+ lugar = 1 pt</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ==================== APP ====================
 export default function App() {
   const [currentPage, setCurrentPage] = useState('login');
@@ -878,6 +1189,7 @@ export default function App() {
       case 'competencia': return <CompetenciaPage deportistas={deportistas} setDeportistas={setDeportistas} setCurrentPage={setCurrentPage} setCarreraActual={setCarreraActual} />;
       case 'dashboard': return <DashboardPage carreraActual={carreraActual} setCarreraActual={setCarreraActual} setHistorialResultados={setHistorialResultados} />;
       case 'resultados': return <ResultadosPage historialResultados={historialResultados} setHistorialResultados={setHistorialResultados} />;
+      case 'rankings': return <RankingsPage />;
       default: return <LoginPage setCurrentPage={setCurrentPage} setUser={setUser} />;
     }
   };
